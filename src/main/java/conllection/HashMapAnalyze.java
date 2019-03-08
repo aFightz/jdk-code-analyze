@@ -11,7 +11,7 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
     //容器默认的容量
     static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
-    //容器最大容量(如果超出会如何处理？)
+    //容器最大容量(如果超出会如何处理？)，大概是10亿7千万
     static final int MAXIMUM_CAPACITY = 1 << 30;
 
 
@@ -709,6 +709,7 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
             else if (p instanceof HashMapAnalyze.TreeNode)
                 e = ((HashMapAnalyze.TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
             else {
+                //这段有什么意义
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
@@ -750,7 +751,8 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
             }
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                     oldCap >= DEFAULT_INITIAL_CAPACITY)
-                newThr = oldThr << 1; // double threshold
+                //阈值与容量都增加一倍
+                newThr = oldThr << 1;
         }
         else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
