@@ -14,10 +14,11 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
     //容器最大容量(如果超出会如何处理？)
     static final int MAXIMUM_CAPACITY = 1 << 30;
 
-    //默认容器因数,当CAPACITY * FACTOR >= THRESHOLD时，容器就会扩容
+
     static final float DEFAULT_LOAD_FACTOR = 0.75f;
 
-    //默认阈值
+
+    //CAPACITY * FACTOR = THRESHOLD`
     static final int TREEIFY_THRESHOLD = 8;
 
 
@@ -27,10 +28,13 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
 
     int threshold;
 
+    transient int size;
+
     static final int UNTREEIFY_THRESHOLD = 6;
 
     final float loadFactor;
 
+    static final int MIN_TREEIFY_CAPACITY = 64;
 
     public HashMapAnalyze() {
         this.loadFactor = DEFAULT_LOAD_FACTOR; // all other fields defaulted
@@ -682,48 +686,56 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
     }
 
-//    final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
-//                   boolean evict) {
-//        HashMapAnalyze.Node<K,V>[] tab; HashMapAnalyze.Node<K,V> p; int n, i;
-//        if ((tab = table) == null || (n = tab.length) == 0)
-//            n = (tab = resize()).length;
-//        if ((p = tab[i = (n - 1) & hash]) == null)
-//            tab[i] = newNode(hash, key, value, null);
-//        else {
-//            HashMapAnalyze.Node<K,V> e; K k;
-//            if (p.hash == hash &&
-//                    ((k = p.key) == key || (key != null && key.equals(k))))
-//                e = p;
-//            else if (p instanceof HashMapAnalyze.TreeNode)
-//                e = ((HashMapAnalyze.TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
-//            else {
-//                for (int binCount = 0; ; ++binCount) {
-//                    if ((e = p.next) == null) {
-//                        p.next = newNode(hash, key, value, null);
-//                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
-//                            treeifyBin(tab, hash);
-//                        break;
-//                    }
-//                    if (e.hash == hash &&
-//                            ((k = e.key) == key || (key != null && key.equals(k))))
-//                        break;
-//                    p = e;
-//                }
-//            }
-//            if (e != null) { // existing mapping for key
-//                V oldValue = e.value;
-//                if (!onlyIfAbsent || oldValue == null)
-//                    e.value = value;
-//                afterNodeAccess(e);
-//                return oldValue;
-//            }
-//        }
-//        ++modCount;
-//        if (++size > threshold)
-//            resize();
-//        afterNodeInsertion(evict);
-//        return null;
-//    }
+    final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+                   boolean evict) {
+        HashMapAnalyze.Node<K,V>[] tab;
+        HashMapAnalyze.Node<K,V> p;
+        int n, i;
+        if ((tab = table) == null || (n = tab.length) == 0)
+            //初始化table
+            n = (tab = resize()).length;
+        if ((p = tab[i = (n - 1) & hash]) == null)
+            //如果当前index没有其他节点，则直接新建一个节点
+            tab[i] = newNode(hash, key, value, null);
+        else {
+            //当前index已经有节点了，将节点插入一棵红黑树
+            HashMapAnalyze.Node<K,V> e;
+            K k;
+            //注意：此时p表示红黑树的头结点
+            if (p.hash == hash &&
+                    ((k = p.key) == key || (key != null && key.equals(k))))
+                //hash值相同且key值相同,表示是同一个key（有没可能有key值相同而hash不同的情况？）
+                e = p;
+            else if (p instanceof HashMapAnalyze.TreeNode)
+                e = ((HashMapAnalyze.TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+            else {
+                for (int binCount = 0; ; ++binCount) {
+                    if ((e = p.next) == null) {
+                        p.next = newNode(hash, key, value, null);
+                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
+                            treeifyBin(tab, hash);
+                        break;
+                    }
+                    if (e.hash == hash &&
+                            ((k = e.key) == key || (key != null && key.equals(k))))
+                        break;
+                    p = e;
+                }
+            }
+            if (e != null) { // existing mapping for key
+                V oldValue = e.value;
+                if (!onlyIfAbsent || oldValue == null)
+                    e.value = value;
+                afterNodeAccess(e);
+                return oldValue;
+            }
+        }
+        ++modCount;
+        if (++size > threshold)
+            resize();
+        afterNodeInsertion(evict);
+        return null;
+    }
 
 
     final HashMapAnalyze.Node<K,V>[] resize() {
@@ -742,7 +754,8 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         }
         else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
-        else {               // zero initial threshold signifies using defaults
+        else {
+            //oldThr = 0，容器容量与阈值初始化
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
@@ -846,11 +859,40 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         return null;
     }
 
+    HashMapAnalyze.Node<K,V> newNode(int hash, K key, V value, HashMapAnalyze.Node<K,V> next) {
+        return new HashMapAnalyze.Node<>(hash, key, value, next);
+    }
+
+    HashMapAnalyze.TreeNode<K,V> replacementTreeNode(HashMapAnalyze.Node<K,V> p, HashMapAnalyze.Node<K,V> next) {
+        return new HashMapAnalyze.TreeNode<>(p.hash, p.key, p.value, next);
+    }
 
 
 
+    void afterNodeAccess(HashMapAnalyze.Node<K,V> p) { }
 
+    void afterNodeInsertion(boolean evict) { }
 
+    final void treeifyBin(HashMapAnalyze.Node<K,V>[] tab, int hash) {
+        int n, index; HashMapAnalyze.Node<K,V> e;
+        if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
+            resize();
+        else if ((e = tab[index = (n - 1) & hash]) != null) {
+            HashMapAnalyze.TreeNode<K,V> hd = null, tl = null;
+            do {
+                HashMapAnalyze.TreeNode<K,V> p = replacementTreeNode(e, null);
+                if (tl == null)
+                    hd = p;
+                else {
+                    p.prev = tl;
+                    tl.next = p;
+                }
+                tl = p;
+            } while ((e = e.next) != null);
+            if ((tab[index] = hd) != null)
+                hd.treeify(tab);
+        }
+    }
 
 
 
