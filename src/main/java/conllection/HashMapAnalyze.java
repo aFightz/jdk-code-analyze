@@ -686,6 +686,10 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
     }
 
+    public V put(K key, V value) {
+        return putVal(hash(key), key, value, false, true);
+    }
+
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
         HashMapAnalyze.Node<K,V>[] tab;
