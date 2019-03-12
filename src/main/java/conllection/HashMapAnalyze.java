@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         implements Map<K,V>, Cloneable, Serializable {
@@ -35,6 +36,8 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
     final float loadFactor;
 
     static final int MIN_TREEIFY_CAPACITY = 64;
+
+    transient Set<Map.Entry<K,V>> entrySet;
 
     public HashMapAnalyze() {
         this.loadFactor = DEFAULT_LOAD_FACTOR; // all other fields defaulted
@@ -236,8 +239,9 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         }
 
         /**
-         * Returns a list of non-TreeNodes replacing those linked from
-         * this node.
+         * 将红黑树转换成一个list
+         * @param map
+         * @return
          */
         final HashMapAnalyze.Node<K,V> untreeify(HashMapAnalyze<K,V> map) {
             HashMapAnalyze.Node<K,V> hd = null, tl = null;
@@ -425,7 +429,11 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
             for (HashMapAnalyze.TreeNode<K,V> e = b, next; e != null; e = next) {
                 next = (HashMapAnalyze.TreeNode<K,V>)e.next;
                 e.next = null;
+
                 if ((e.hash & bit) == 0) {
+                    /**
+                     * 表示这是低位，hash值小于oldCap
+                     */
                     if ((e.prev = loTail) == null)
                         loHead = e;
                     else
@@ -434,6 +442,9 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
                     ++lc;
                 }
                 else {
+                    /**
+                     * 表示这是高位，hash值大于等于oldCap
+                     */
                     if ((e.prev = hiTail) == null)
                         hiHead = e;
                     else
@@ -695,9 +706,12 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
         HashMapAnalyze.Node<K,V>[] tab;
         HashMapAnalyze.Node<K,V> p;
         int n, i;
-        if ((tab = table) == null || (n = tab.length) == 0)
+        if ((tab = table) == null || (n = tab.length) == 0){
             //初始化table
-            n = (tab = resize()).length;
+            tab = resize();
+            n = tab.length;
+        }
+
         if ((p = tab[i = (n - 1) & hash]) == null)
             //如果当前index没有其他节点，则直接新建一个节点
             tab[i] = newNode(hash, key, value, null);
@@ -743,35 +757,63 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
     }
 
 
+    /**
+     * table空间的重新分配
+     * @return
+     */
     final HashMapAnalyze.Node<K,V>[] resize() {
         HashMapAnalyze.Node<K,V>[] oldTab = table;
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
         int oldThr = threshold;
         int newCap, newThr = 0;
+
         if (oldCap > 0) {
             if (oldCap >= MAXIMUM_CAPACITY) {
+                /**
+                 * 容量超出最大值，直接将阈值设为最大（意图是不需要再为table扩容了）
+                 */
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                     oldCap >= DEFAULT_INITIAL_CAPACITY)
-                //阈值与容量都增加一倍
+            /**
+             * 将容量扩大一倍，
+             * 若：
+             * 扩容前的容量 >= DEFAULT_INITIAL_CAPACITY
+             * 扩容后的容量 < MAXIMUM_CAPACITY
+             * 阈值也扩大一倍
+             */
                 newThr = oldThr << 1;
         }
         else if (oldThr > 0) // initial capacity was placed in threshold
+        /**
+         * 这种情况怎么会出现？
+         * 当table容量为0，但是阈值不为0时：
+         * table容量设置为阈值。
+         * 意味着之后resize时容量与阈值将一直相等（因为会一起乘以2），直到容量超出最大范围。
+         */
             newCap = oldThr;
         else {
-            //oldThr = 0，容器容量与阈值初始化
+            /**
+             * 当容量与阈值均为0时，将进行初始化
+             */
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
         if (newThr == 0) {
+            /**
+             * 不知道这种情况什么时候出现
+             */
             float ft = (float)newCap * loadFactor;
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                     (int)ft : Integer.MAX_VALUE);
         }
         threshold = newThr;
-        @SuppressWarnings({"rawtypes","unchecked"})
+
+        /**
+         * 直接创建扩容数组
+         */
         HashMapAnalyze.Node<K,V>[] newTab = (HashMapAnalyze.Node<K,V>[])new HashMapAnalyze.Node[newCap];
         table = newTab;
         if (oldTab != null) {
@@ -780,6 +822,9 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
                 if ((e = oldTab[j]) != null) {
                     oldTab[j] = null;
                     if (e.next == null)
+                        /**
+                        * 如果这个桶只有一个元素，那么根据哈希值和扩容后的容量重新分配一个桶即可。
+                        */
                         newTab[e.hash & (newCap - 1)] = e;
                     else if (e instanceof HashMapAnalyze.TreeNode)
                         ((HashMapAnalyze.TreeNode<K,V>)e).split(this, newTab, j, oldCap);
@@ -862,7 +907,8 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
 
     @Override
     public Set<Entry<K, V>> entrySet() {
-        return null;
+        Set<Map.Entry<K,V>> es;
+        return (es = entrySet) == null ? (entrySet = new HashMapAnalyze.EntrySet()) : es;
     }
 
     HashMapAnalyze.Node<K,V> newNode(int hash, K key, V value, HashMapAnalyze.Node<K,V> next) {
@@ -901,10 +947,276 @@ public class HashMapAnalyze <K,V> extends AbstractMap<K,V>
     }
 
 
+    final class EntrySet extends AbstractSet<Map.Entry<K,V>> {
+        public final int size()                 { return size; }
+        public final void clear()               { HashMapAnalyze.this.clear(); }
+        public final Iterator<Map.Entry<K,V>> iterator() {
+            return new HashMapAnalyze.EntryIterator();
+        }
+        public final boolean contains(Object o) {
+            if (!(o instanceof Map.Entry))
+                return false;
+            Map.Entry<?,?> e = (Map.Entry<?,?>) o;
+            Object key = e.getKey();
+            HashMapAnalyze.Node<K,V> candidate = getNode(hash(key), key);
+            return candidate != null && candidate.equals(e);
+        }
+        public final boolean remove(Object o) {
+            if (o instanceof Map.Entry) {
+                Map.Entry<?,?> e = (Map.Entry<?,?>) o;
+                Object key = e.getKey();
+                Object value = e.getValue();
+                return removeNode(hash(key), key, value, true, true) != null;
+            }
+            return false;
+        }
+        public final Spliterator<Map.Entry<K,V>> spliterator() {
+            return new HashMapAnalyze.EntrySpliterator<>(HashMapAnalyze.this, 0, -1, 0, 0);
+        }
+        public final void forEach(Consumer<? super Entry<K,V>> action) {
+            HashMapAnalyze.Node<K,V>[] tab;
+            if (action == null)
+                throw new NullPointerException();
+            if (size > 0 && (tab = table) != null) {
+                int mc = modCount;
+                for (int i = 0; i < tab.length; ++i) {
+                    for (HashMapAnalyze.Node<K,V> e = tab[i]; e != null; e = e.next)
+                        action.accept(e);
+                }
+                if (modCount != mc)
+                    throw new ConcurrentModificationException();
+            }
+        }
+    }
+    abstract class HashIterator {
+        HashMapAnalyze.Node<K,V> next;        // next entry to return
+        HashMapAnalyze.Node<K,V> current;     // current entry
+        int expectedModCount;  // for fast-fail
+        int index;             // current slot
+
+        HashIterator() {
+            expectedModCount = modCount;
+            HashMapAnalyze.Node<K,V>[] t = table;
+            current = next = null;
+            index = 0;
+            if (t != null && size > 0) { // advance to first entry
+                do {} while (index < t.length && (next = t[index++]) == null);
+            }
+        }
+
+        public final boolean hasNext() {
+            return next != null;
+        }
+
+        final HashMapAnalyze.Node<K,V> nextNode() {
+            HashMapAnalyze.Node<K,V>[] t;
+            HashMapAnalyze.Node<K,V> e = next;
+            if (modCount != expectedModCount)
+                throw new ConcurrentModificationException();
+            if (e == null)
+                throw new NoSuchElementException();
+            if ((next = (current = e).next) == null && (t = table) != null) {
+                do {} while (index < t.length && (next = t[index++]) == null);
+            }
+            return e;
+        }
+
+        public final void remove() {
+            HashMapAnalyze.Node<K,V> p = current;
+            if (p == null)
+                throw new IllegalStateException();
+            if (modCount != expectedModCount)
+                throw new ConcurrentModificationException();
+            current = null;
+            K key = p.key;
+            removeNode(hash(key), key, null, false, false);
+            expectedModCount = modCount;
+        }
+    }
+
+    final class EntryIterator extends HashMapAnalyze.HashIterator
+            implements Iterator<Map.Entry<K,V>> {
+        public final Map.Entry<K,V> next() { return nextNode(); }
+    }
+
+
+    final HashMapAnalyze.Node<K,V> removeNode(int hash, Object key, Object value,
+                                       boolean matchValue, boolean movable) {
+        HashMapAnalyze.Node<K,V>[] tab; HashMapAnalyze.Node<K,V> p; int n, index;
+        if ((tab = table) != null && (n = tab.length) > 0 &&
+                (p = tab[index = (n - 1) & hash]) != null) {
+            HashMapAnalyze.Node<K,V> node = null, e; K k; V v;
+            if (p.hash == hash &&
+                    ((k = p.key) == key || (key != null && key.equals(k))))
+                node = p;
+            else if ((e = p.next) != null) {
+                if (p instanceof HashMapAnalyze.TreeNode)
+                    node = ((HashMapAnalyze.TreeNode<K,V>)p).getTreeNode(hash, key);
+                else {
+                    do {
+                        if (e.hash == hash &&
+                                ((k = e.key) == key ||
+                                        (key != null && key.equals(k)))) {
+                            node = e;
+                            break;
+                        }
+                        p = e;
+                    } while ((e = e.next) != null);
+                }
+            }
+            if (node != null && (!matchValue || (v = node.value) == value ||
+                    (value != null && value.equals(v)))) {
+                if (node instanceof HashMapAnalyze.TreeNode)
+                    ((HashMapAnalyze.TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+                else if (node == p)
+                    tab[index] = node.next;
+                else
+                    p.next = node.next;
+                ++modCount;
+                --size;
+                afterNodeRemoval(node);
+                return node;
+            }
+        }
+        return null;
+    }
 
 
 
+    static class HashMapSpliterator<K,V> {
+        final HashMapAnalyze<K,V> map;
+        HashMapAnalyze.Node<K,V> current;          // current node
+        int index;                  // current index, modified on advance/split
+        int fence;                  // one past last index
+        int est;                    // size estimate
+        int expectedModCount;       // for comodification checks
 
+        HashMapSpliterator(HashMapAnalyze<K,V> m, int origin,
+                           int fence, int est,
+                           int expectedModCount) {
+            this.map = m;
+            this.index = origin;
+            this.fence = fence;
+            this.est = est;
+            this.expectedModCount = expectedModCount;
+        }
+
+        final int getFence() { // initialize fence and size on first use
+            int hi;
+            if ((hi = fence) < 0) {
+                HashMapAnalyze<K,V> m = map;
+                est = m.size;
+                expectedModCount = m.modCount;
+                HashMapAnalyze.Node<K,V>[] tab = m.table;
+                hi = fence = (tab == null) ? 0 : tab.length;
+            }
+            return hi;
+        }
+
+        public final long estimateSize() {
+            getFence(); // force init
+            return (long) est;
+        }
+    }
+
+
+    static final class EntrySpliterator<K,V>
+            extends HashMapAnalyze.HashMapSpliterator<K,V>
+            implements Spliterator<Map.Entry<K,V>> {
+        EntrySpliterator(HashMapAnalyze<K,V> m, int origin, int fence, int est,
+                         int expectedModCount) {
+            super(m, origin, fence, est, expectedModCount);
+        }
+
+        public HashMapAnalyze.EntrySpliterator<K,V> trySplit() {
+            int hi = getFence(), lo = index, mid = (lo + hi) >>> 1;
+            return (lo >= mid || current != null) ? null :
+                    new HashMapAnalyze.EntrySpliterator<>(map, lo, index = mid, est >>>= 1,
+                            expectedModCount);
+        }
+
+        public void forEachRemaining(Consumer<? super Map.Entry<K,V>> action) {
+            int i, hi, mc;
+            if (action == null)
+                throw new NullPointerException();
+            HashMapAnalyze<K,V> m = map;
+            HashMapAnalyze.Node<K,V>[] tab = m.table;
+            if ((hi = fence) < 0) {
+                mc = expectedModCount = m.modCount;
+                hi = fence = (tab == null) ? 0 : tab.length;
+            }
+            else
+                mc = expectedModCount;
+            if (tab != null && tab.length >= hi &&
+                    (i = index) >= 0 && (i < (index = hi) || current != null)) {
+                HashMapAnalyze.Node<K,V> p = current;
+                current = null;
+                do {
+                    if (p == null)
+                        p = tab[i++];
+                    else {
+                        action.accept(p);
+                        p = p.next;
+                    }
+                } while (p != null || i < hi);
+                if (m.modCount != mc)
+                    throw new ConcurrentModificationException();
+            }
+        }
+
+        public boolean tryAdvance(Consumer<? super Map.Entry<K,V>> action) {
+            int hi;
+            if (action == null)
+                throw new NullPointerException();
+            HashMapAnalyze.Node<K,V>[] tab = map.table;
+            if (tab != null && tab.length >= (hi = getFence()) && index >= 0) {
+                while (current != null || index < hi) {
+                    if (current == null)
+                        current = tab[index++];
+                    else {
+                        HashMapAnalyze.Node<K,V> e = current;
+                        current = current.next;
+                        action.accept(e);
+                        if (map.modCount != expectedModCount)
+                            throw new ConcurrentModificationException();
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        public int characteristics() {
+            return (fence < 0 || est == map.size ? Spliterator.SIZED : 0) |
+                    Spliterator.DISTINCT;
+        }
+    }
+
+    final HashMapAnalyze.Node<K,V> getNode(int hash, Object key) {
+        HashMapAnalyze.Node<K,V>[] tab;
+        HashMapAnalyze.Node<K,V> first, e;
+        int n;
+        K k;
+        if ((tab = table) != null && (n = tab.length) > 0 &&
+                (first = tab[(n - 1) & hash]) != null) {
+            if (first.hash == hash && // always check first node
+                    ((k = first.key) == key || (key != null && key.equals(k))))
+                return first;
+            if ((e = first.next) != null) {
+                if (first instanceof HashMapAnalyze.TreeNode)
+                    return ((HashMapAnalyze.TreeNode<K,V>)first).getTreeNode(hash, key);
+                do {
+                    if (e.hash == hash &&
+                            ((k = e.key) == key || (key != null && key.equals(k))))
+                        return e;
+                } while ((e = e.next) != null);
+            }
+        }
+        return null;
+    }
+
+
+    void afterNodeRemoval(HashMapAnalyze.Node<K,V> p) { }
 
 //    public static void main(String[] args) {
 //        System.out.println(hash(17));
